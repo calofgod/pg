@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>주일설교 A4 2장 자동 요약 웹 프로그램</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Noto Sans KR & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+  <!-- html2pdf.js (PDF 다운로드용) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+  <!-- docx.js (실제 .docx 워드 파일 생성용) -->
+  <script src="https://unpkg.com/docx@8.5.0/build/index.umd.js"></script>
+
+  <style>
+    body {
+      font-family: 'Noto Sans KR', 'Inter', sans-serif;
+      background-color: #f3f4f6;
+      color: #111827;
+    }
+
+    /* A4 용지 2장 레이아웃 스타일 (210mm x 297mm) */
+    .a4-sheet {
+      width: 210mm;
+      min-height: 297mm;
+      height: 297mm;
+      background: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.12), 0 8px 10px -6px rgba(0, 0, 0, 0.08);
+      padding: 14mm 16mm;
+      box-sizing: border-box;
+      margin: 0 auto 24px auto;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      word-break: keep-all;
+    }
+
+    .a4-page-badge {
+      position: absolute;
+      bottom: 8mm;
+      right: 16mm;
+      font-size: 8.5pt;
+      color: #9ca3af;
+      user-select: none;
+    }
+
+    /* 문서 내부 타이포그래피 변수 */
+    :root {
+      --doc-font-size: 9.4pt;
+      --doc-line-height: 1.52;
+      --scripture-font-size: 8.9pt;
+    }
+
+    .doc-content-area {
+      font-size: var(--doc-font-size);
+      line-height: var(--doc-line-height);
+      color: #111111;
+    }
+
+    .doc-title {
+      font-size: 13pt;
+      font-weight: 700;
+      line-height: 1.3;
+      margin-bottom: 2px;
+      color: #000000;
+    }
+
+    .doc-meta {
+      font-size: 10pt;
+      font-weight: 700;
+      line-height: 1.35;
+      margin-bottom: 7px;
+      color: #000000;
+    }
+
+    /* 성경구절 푸른색 */
+    .doc-scripture-block {
+      color: #1B4F9C;
+      font-size: var(--scripture-font-size);
+      line-height: 1.44;
+      margin-bottom: 9px;
+    }
+
+    .doc-scripture-ref {
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    .doc-intro {
+      margin-bottom: 9px;
+      text-align: justify;
+    }
+
+    /* 대지 제목: 진하게 + 밑줄 */
+    .doc-point-heading {
+      font-size: calc(var(--doc-font-size) + 0.6pt);
+      font-weight: 700;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      margin-top: 7px;
+      margin-bottom: 4px;
+      color: #000000;
+    }
+
+    .doc-point-body p {
+      margin: 0 0 5px 0;
+      text-align: justify;
+    }
+
+    /* 적용질문: 자주색 */
+    .doc-point-question {
+      color: #7B1FA2;
+      font-weight: 500;
+      margin-top: 4px;
+      margin-bottom: 7px;
+      text-align: justify;
+    }
+
+    /* 직접 편집 가능 표시 */
+    [contenteditable="true"]:hover {
+      outline: 1px dashed #93c5fd;
+      border-radius: 2px;
+    }
+    [contenteditable="true"]:focus {
+      outline: 2px solid #3b82f6;
+      background-color: #eff6ff44;
+      border-radius: 2px;
+    }
+
+    /* 인쇄(@media print) 전용 스타일 */
+    @media print {
+      body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      #preview-scroll-container {
+        overflow: visible !important;
+        height: auto !important;
+        padding: 0 !important;
+        background: #ffffff !important;
+      }
+      .a4-sheet {
+        box-shadow: none !important;
+        margin: 0 !important;
+        page-break-after: always;
+        break-after: page;
+        height: 297mm !important;
+        width: 210mm !important;
+      }
+      .a4-sheet:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
+      .a4-page-badge {
+        display: none !important;
+      }
+    }
+
+    /* 모바일 및 작은 화면에서 A4 용지 축소 대응 */
+    @media (max-width: 1280px) {
+      .a4-scale-wrapper {
+        transform-origin: top center;
+      }
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+  <!-- 상단 네비게이션 바 -->
+  <header class="no-print bg-white border-b border-slate-200 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-30 shadow-sm">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 rounded-xl bg-indigo-700 text-white flex items-center justify-center font-bold text-lg shadow-sm">
+        📖
+      </div>
+      <div>
+        <h1 class="text-base sm:text-lg font-bold text-slate-900 leading-tight">주일설교 A4 2장 자동 요약기</h1>
+        <p class="text-xs text-slate-500">목사님 원문 어조·간증 보존 · 성경구절(청) · 대지(밑줄) · 적용질문(자주)</p>
+      </div>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-2">
+      <button type="button" onclick="loadSampleData()" class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl bg-amber-50 text-amber-800 border border-amber-200 hover:bg-amber-100 transition flex items-center gap-1.5">
+        <span>📋</span> 샘플 데이터 채우기
+      </button>
+      <button type="button" onclick="toggleApiModal()" class="px-3 py-2 text-xs sm:text-sm font-medium rounded-xl bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition flex items-center gap-1.5">
+        <span>🔑</span> API 키 설정 <span id="api-status-dot" class="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+      </button>
+    </div>
+  </header>
+
+  <!-- 알림 메시지 토스트 -->
+  <div id="toast-box" class="no-print fixed bottom-5 right-5 z-50 hidden max-w-sm bg-slate-900 text-white text-sm px-4 py-3 rounded-xl shadow-lg transition-opacity duration-300"></div>
+
+  <!-- Gemini API Key 설정 모달 -->
+  <div id="api-modal" class="no-print fixed inset-0 bg-black/40 backdrop-blur-xs z-40 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-100">
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-lg font-bold text-slate-900">🔑 Gemini API Key 설정</h2>
+        <button onclick="toggleApiModal()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+      </div>
+      <p class="text-xs text-slate-600 mb-4 leading-relaxed">
+        Google AI Studio에서 발급받은 Gemini API Key를 입력하세요. 키는 브라우저(localStorage)에만 안전하게 저장되며 외부 서버로 전송되지 않습니다.
+      </p>
+      <input type="password" id="gemini-api-key-input" placeholder="AIzaSy..." class="w-full px-3.5 py-2.5 text-sm border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none mb-4" />
+      <div class="flex justify-end gap-2">
+        <button onclick="clearApiKey()" class="px-3.5 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-xl">초기화</button>
+        <button onclick="saveApiKey()" class="px-4 py-2 text-xs font-semibold bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl shadow-sm">저장하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 메인 2단 분할 레이아웃 -->
+  <main class="flex-1 flex flex-col lg:flex-row overflow-hidden">
+
+    <!-- 좌측: 입력 패널 -->
+    <section class="no-print w-full lg:w-[440px] xl:w-[480px] bg-white border-r border-slate-200 flex flex-col lg:h-[calc(100vh-61px)] overflow-y-auto p-4 sm:p-5 shrink-0">
+      <div class="space-y-4">
+
+        <!-- 1. 유튜브 주소 및 대본 입력 -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+              <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center">1</span>
+              설교 유튜브 주소 및 대본
+            </label>
+          </div>
+
+          <div class="flex gap-2">
+            <input type="url" id="youtube-url" placeholder="https://www.youtube.com/watch?v=..." class="flex-1 px-3 py-2 text-sm bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" />
+            <button type="button" id="fetch-yt-btn" onclick="fetchYoutubeInfo()" class="px-3 py-2 text-xs font-semibold bg-slate-800 text-white rounded-xl hover:bg-slate-700 transition shrink-0">
+              영상 정보 불러오기
+            </button>
+          </div>
+
+          <!-- 유튜브 메타데이터 & 자막 보조 입력 영역 -->
+          <div class="pt-1">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-medium text-slate-600">유튜브 제목 · 설교자/일자 · 성경본문 (설명란)</span>
+              <span class="text-[11px] text-indigo-600">자동 추출 또는 직접 붙여넣기</span>
+            </div>
+            <textarea id="yt-meta-text" rows="4" placeholder="예시:
+같은 한 성령
+11/22 주일설교_김진규 목사님
+고린도전서 12장 1~11절
+1 형제들아 신령한 것에 대하여 나는 너희가 알지 못하기를 원하지 아니하노니..." class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs font-medium text-slate-600">설교 전체 대본 (유튜브 스크립트 복사/붙여넣기)</span>
+              <button type="button" onclick="stripTimestamps()" class="text-[11px] text-slate-500 hover:text-indigo-600 underline">시간표시(00:00) 자동제거</button>
+            </div>
+            <textarea id="sermon-transcript" rows="5" placeholder="유튜브 영상 하단 [더보기] -> [스크립트 표시]에서 전체 복사 후 여기에 붙여넣으시면 목사님의 원문 어조와 간증이 생생하게 반영됩니다." class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          </div>
+        </div>
+
+        <!-- 2. 1대지 ~ 3대지 및 적용질문 -->
+        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200/80 space-y-3">
+          <label class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-xs flex items-center justify-center">2</span>
+            대지 및 적용질문 입력 (1~3대지)
+          </label>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">1대지와 적용질문</label>
+            <textarea id="point1-input" rows="3" placeholder="1. 신령한 것을 알아야 합니다.
+Q. 여러분은 하나님이 은혜로 주신 것을 가지고 나를 높이고 있지는 않습니까? 사역과 직분을 감당하면서 주님보다 내 인정과 체면을 더 붙들고 있지는 않습니까?" class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">2대지와 적용질문</label>
+            <textarea id="point2-input" rows="3" placeholder="2. 섬기는 자가 되어야 합니다.
+Q. 여러분은 맡겨진 자리에서 섬기고 있습니까, 아니면 사람들에게 대접받기를 원합니까?" class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">3대지와 적용질문</label>
+            <textarea id="point3-input" rows="3" placeholder="3. 서로의 유익을 구해야 합니다.
+Q. 여러분은 지금 누구를 믿음이 부족하다고 판단하고 있습니까? 이번 주 내가 받은 은사로 누구를 섬기겠습니까?" class="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none leading-relaxed"></textarea>
+          </div>
+        </div>
+
+        <!-- 실행 버튼 -->
+        <button type="button" id="generate-btn" onclick="generateSermonSummary()" class="w-full py-3.5 px-4 rounded-2xl bg-indigo-700 hover:bg-indigo-800 active:scale-[0.99] text-white font-bold text-sm shadow-md transition flex items-center justify-center gap-2">
+          <span id="generate-btn-icon">✨</span>
+          <span id="generate-btn-text">A4 2장 설교 요약본 생성하기</span>
+        </button>
+
+        <p class="text-[11px] text-slate-400 text-center pb-2">
+          생성 후 우측 A4 용지 미리보기에서 글자를 클릭하여 직접 수정할 수 있습니다.
+        </p>
+      </div>
+    </section>
+
+    <!-- 우측: 실시간 A4 2장 미리보기 & 다운로드 패널 -->
+    <section class="flex-1 flex flex-col lg:h-[calc(100vh-61px)] bg-slate-200/70">
+
+      <!-- 우측 상단 툴바 (Auto-Fit 조절 및 다운로드 버튼) -->
+      <div class="no-print bg-white border-b border-slate-200 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
+        <!-- A4 2장 Auto-Fit 조절기 -->
+        <div class="flex flex-wrap items-center gap-3 text-xs">
+          <div class="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl">
+            <span class="font-semibold text-slate-700">글자크기</span>
+            <input type="range" id="font-size-slider" min="8.2" max="10.5" step="0.1" value="9.4" oninput="updateTypography()" class="w-20 accent-indigo-600 cursor-pointer" />
+            <span id="font-size-val" class="font-mono text-indigo-700 font-bold w-9">9.4pt</span>
+          </div>
+
+          <div class="flex items-center gap-1.5 bg-slate-100 px-2.5 py-1.5 rounded-xl">
+            <span class="font-semibold text-slate-700">줄간격</span>
+            <input type="range" id="line-height-slider" min="1.32" max="1.75" step="0.02" value="1.52" oninput="updateTypography()" class="w-20 accent-indigo-600 cursor-pointer" />
+            <span id="line-height-val" class="font-mono text-indigo-700 font-bold w-8">1.52</span>
+          </div>
+
+          <button type="button" onclick="autoFitTwoPages()" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 font-semibold hover:bg-indigo-100 border border-indigo-200 transition" title="A4 2페이지에 꽉 차도록 자동 맞춤">
+            📐 A4 2장 자동맞춤
+          </button>
+        </div>
+
+        <!-- 3종 파일 다운로드 버튼 -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" onclick="downloadPDF()" class="px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+            <span>📄</span> PDF 다운로드 (A4 2장)
+          </button>
+          <button type="button" onclick="downloadHWP()" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+            <span>🇰🇷</span> 한글(.hwp) 다운로드
+          </button>
+          <button type="button" onclick="downloadDOCX()" class="px-3.5 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-bold shadow-sm transition flex items-center gap-1.5">
+            <span>📝</span> 워드(.docx) 다운로드
+          </button>
+        </div>
+      </div>
+
+      <!-- A4 용지 2장 렌더링 스크롤 영역 -->
+      <div id="preview-scroll-container" class="flex-1 overflow-y-auto p-4 sm:p-8 flex flex-col items-center">
+        <div id="a4-document-wrapper" class="a4-scale-wrapper">
+
+          <!-- PAGE 1 -->
+          <div id="a4-page-1" class="a4-sheet">
+            <div class="doc-content-area" id="page-1-content">
+              <div id="doc-title" class="doc-title" contenteditable="true">같은 한 성령</div>
+              <div id="doc-meta" class="doc-meta" contenteditable="true">11/22 주일설교_김진규 목사님</div>
+
+              <div class="doc-scripture-block">
+                <div id="doc-scripture-ref" class="doc-scripture-ref" contenteditable="true">고린도전서 12장 1~11절</div>
+                <div id="doc-scripture-verses" contenteditable="true">
+                  1 형제들아 신령한 것에 대하여 나는 너희가 알지 못하기를 원하지 아니하노니<br>
+                  2 너희도 알거니와 너희가 이방인으로 있을 때에 말 못하는 우상에게로 끄는 그대로 끌려 갔느니라<br>
+                  3 그러므로 내가 너희에게 알리노니 하나님의 영으로 말하는 자는 누구든지 예수를 저주할 자라 하지 아니하고 또 성령으로 아니하고는 누구든지 예수를 주시라 할 수 없느니라<br>
+                  4 은사는 여러 가지나 성령은 같고<br>
+                  5 직분은 여러 가지나 주는 같으며<br>
+                  6 또 사역은 여러 가지나 모든 것을 모든 사람 가운데서 이루시는 하나님은 같으니<br>
+                  7 각 사람에게 성령을 나타내심은 유익하게 하려 하심이라<br>
+                  8 어떤 사람에게는 성령으로 말미암아 지혜의 말씀을, 어떤 사람에게는 같은 성령을 따라 지식의 말씀을,<br>
+                  9 다른 사람에게는 같은 성령으로 믿음을, 어떤 사람에게는 한 성령으로 병 고치는 은사를,<br>
+                  10 어떤 사람에게는 능력 행함을, 어떤 사람에게는 예언함을, 어떤 사람에게는 영들 분별함을, 다른 사람에게는 각종 방언 말함을, 어떤 사람에게는 방언들 통역함을 주시나니<br>
+                  11 이 모든 일은 같은 한 성령이 행하사 그의 뜻대로 각 사람에게 나누어 주시는 것이니라
+                </div>
+              </div>
+
+              <div id="doc-intro" class="doc-intro" contenteditable="true">
+                지난 목요일 수능이 있었습니다. 그동안 공부한 것을 하루 만에 평가받는다는 것은 참 부담스러운 일입니다. 시험이니 점수를 매길 수밖에 없지만, 그 점수가 한 사람의 가치를 다 말해주는 것은 아닙니다. 그런데 우리도 신앙생활을 하면서 사람들에게 등급을 매기고 있지는 않습니까? 말씀을 많이 알고, 기도를 잘하고, 목장을 잘 이끌면 믿음이 좋다고 생각하고, 반대로 늘 같은 문제로 힘들어하고 사역의 열매가 없으면 믿음이 부족하다고 판단합니다. 그렇게 서로를 비교하다 보면 어느새 내 기준이 옳다고 생각하며 서로를 인정하기가 어려워집니다. 서로 다른 우리가 어떻게 한 성령 안에서 하나가 될 수 있을까요?
+              </div>
+
+              <!-- 1대지 영역 (1페이지 하단 배치) -->
+              <div id="point-1-block">
+                <div id="doc-p1-heading" class="doc-point-heading" contenteditable="true">1. 신령한 것을 알아야 합니다.</div>
+                <div id="doc-p1-body" class="doc-point-body" contenteditable="true">
+                  <p>바울은 성령에 속한 일, 곧 성령의 은사를 반드시 알아야 한다고 말합니다(1절). 고린도 교인들은 방언과 예언 등 여러 은사를 경험했지만, 이것을 가지고 서로 자기가 더 신령하다며 다투었습니다. 은사를 주신 분은 한 성령이신데 받은 사람이 자기를 높이는 것, 이것이 영적 교만입니다. 그래서 바울은 이방인으로 있을 때 '말 못하는 우상'에게 끌려가던 과거를 돌아보게 합니다(2절). 은사를 받고서도 주신 분의 뜻은 생각하지 않고 누가 더 큰 은사를 받았는지 경쟁한다면, 섬기는 대상만 달라졌을 뿐 자기를 높이는 마음은 과거와 같습니다.</p>
+                  <p>오늘날 우리도 돈이 한마디도 안 했는데 돈 때문에 잠을 못 이루고, 누가 알아주지 않으면 혼자 검사도 되고 판사도 되어 재판을 엽니다. 돈과 인정, 내 옳음에 끌려가는 것은 우상이 옷만 갈아입은 것입니다. 저 역시 가난과 열등감 속에서 성공과 인정을 우상으로 삼았고, 목회자가 되어서도 큰일을 꿈꾸며 인정받으려 애쓰다 사역지에서 내침을 당한 뒤에야 제가 사람의 인정에 끌려가고 있었음을 보았습니다.</p>
+                  <p>3절은 성령으로 아니하고는 누구든지 예수를 주시라 할 수 없다고 말씀합니다. 십자가에 달리신 예수님을 나의 구원자요 주님이라 고백하는 믿음조차 성령께서 알게 하신 은혜입니다. 믿음은 은사 위에 서는 것이 아니라 자신의 자리를 바로 찾는 것입니다. 먼저 예수님을 주님으로 고백하게 하신 성령의 은혜를 알 때, 내게 주신 신령한 것을 자랑거리가 아닌 은혜로 받게 됩니다.</p>
+                </div>
+                <div id="doc-p1-question" class="doc-point-question" contenteditable="true">Q. 여러분은 하나님이 은혜로 주신 것을 가지고 나를 높이고 있지는 않습니까? 사역과 직분을 감당하면서 주님보다 내 인정과 체면을 더 붙들고 있지는 않습니까?</div>
+              </div>
+            </div>
+            <div class="a4-page-badge">- 1 / 2 -</div>
+          </div>
+
+          <!-- PAGE 2 -->
+          <div id="a4-page-2" class="a4-sheet">
+            <div class="doc-content-area" id="page-2-content">
+              <!-- 2대지 영역 -->
+              <div id="point-2-block">
+                <div id="doc-p2-heading" class="doc-point-heading" contenteditable="true">2. 섬기는 자가 되어야 합니다.</div>
+                <div id="doc-p2-body" class="doc-point-body" contenteditable="true">
+                  <p>4~6절은 은사, 직분, 사역은 여러 가지나 그 모든 것을 주시고 이루시는 삼위 하나님은 한 분이시라고 선포합니다. 여기서 은사는 내가 잘라서 얻어낸 상이 아니라 성령께서 각 사람에게 분배해 주신 은혜의 선물입니다. 처음 사역을 맡았을 때는 “저 같은 사람을 써 주시니 감사합니다”라고 고백하다가도, 몇 년이 지나면 “이 일은 나 아니면 안 되지”라고 착각하기 쉽습니다. 또한 5절의 '직분'은 원어로 '섬김과 봉사'를 뜻합니다. 직분은 높아지는 자리가 아니라 다른 사람을 섬기라고 주신 자리입니다. 입으로는 예수님을 주님이라 외치면서 맡겨진 직분으로 다른 사람의 주인 노릇을 하고 대접받기를 원한다면 앞뒤가 맞지 않는 모습입니다.</p>
+                  <p>저도 사역자이면서 남편의 직분을 섬김이 아닌 군림하는 자리로 여겼습니다. 결혼 준비의 다툼으로 어머님 얼굴이 마비되는 일까지 겪으면서도 모든 탓을 아내에게 돌렸고, “나는 돈을 벌어오니 당신은 복종하고 집안일을 잘하는 것이 사명”이라며 죄목만 따졌습니다. 싸울 때마다 “동네 지나가는 사람 붙잡고 누가 옳은지 물어보자”며 제 옳음을 증명하려 했고, 울고 있는 두 아들 앞에서까지 아내를 무시했습니다. 구속사 말씀을 듣고 목장에 속해 제 삶을 나누며 비로소 아내와 다른 것이 틀린 것이 아니며, 제 혈기와 교만을 받아내며 가정을 지켜온 사람이 아내였음을 깨달았습니다. 목장에서도 반복되는 문제로 힘들어하는 지체를 쉽게 포기하지 말고, 맡겨진 영혼을 섬기며 주님을 바라보아야 합니다.</p>
+                </div>
+                <div id="doc-p2-question" class="doc-point-question" contenteditable="true">Q. 여러분은 맡겨진 자리에서 섬기고 있습니까, 아니면 사람들에게 대접받기를 원합니까? 최근 내 옳음을 주장하다 상처를 준 사람은 누구입니까? 그 사람에게 내가 먼저 사과하고 감당해야 할 섬김은 무엇입니까?</div>
+              </div>
+
+              <!-- 3대지 영역 -->
+              <div id="point-3-block" class="mt-3">
+                <div id="doc-p3-heading" class="doc-point-heading" contenteditable="true">3. 서로의 유익을 구해야 합니다.</div>
+                <div id="doc-p3-body" class="doc-point-body" contenteditable="true">
+                  <p>7절은 성령께서 각 사람에게 은사를 주시는 목적이 공동체를 유익하게 하려 함이라고 말씀합니다. 은사가 많아도 사랑이 없으면 도리어 상처를 줍니다. 우리가 서로에게 줄 수 있는 가장 큰 유익은 한 영혼의 구원입니다. 8~10절의 아홉 가지 은사를 모두에게 똑같이 주지 않으신 이유는 비교하고 경쟁하라는 것이 아니라 각자 받은 것으로 서로를 섬기게 하려 하심입니다. 특히 9절의 '믿음의 은사'는 고난 속에서도 하나님을 신뢰하게 하는 믿음입니다.</p>
+                  <p>저는 가정과 진로, 목장 문제로 늘 눌려 있던 한 청년 목자를 믿음이 부족하다고 판단했었습니다. 그런데 급성 혈액암 진단을 받은 그 청년은 “사명이 있어서 선물로 주신 일 같다”고 고백했고, 항암 후 패혈증 위기를 넘기며 알코올 중독이던 아버지가 회개하고 연을 끊었던 동생까지 골수 이식으로 연결되는 은혜를 누렸습니다. 얼마 뒤 암이 재발해 하늘나라로 돌아갔습니다. 제 생일날 새벽 임종 예배를 드리며, 눈물이 멈추지 않는 예배 자리에서 그날 큐티 본문인 사도행전 10장 말씀을 보며 제 교만한 선민의식이 드러났습니다. 목회자이고 사역을 열심히 하니 내 믿음이 좋은 줄 알았지만, 정작 믿음이 없었던 사람은 바로 저였습니다. 제가 부족하다고 판단했던 그 청년은 죽음 앞에서도 하나님을 신뢰하며 아버지에게 “교회를 떠나지 마세요, 예배 잘 드리세요”라는 유언을 남겼고, 결국 아버지가 변화되어 양육교사까지 마쳤습니다.</p>
+                  <p>11절은 이 모든 일은 같은 한 성령이 행하사 그의 뜻대로 각 사람에게 나누어 주시는 것이라고 맺습니다. 성령께서 각 사람에게 뜻대로 나누어 주신 은사를 통해 우리를 예수님의 한 몸으로 세워 가십니다. 내가 받은 은사를 자랑할 수도, 내 눈에 연약해 보이는 지체를 함부로 판단할 수도 없습니다. 내 옳음을 내려놓고 각자 받은 은사로 서로를 섬기며 한 영혼의 구원을 위해 함께 달려가는 우리가 되기를 소망합니다.</p>
+                </div>
+                <div id="doc-p3-question" class="doc-point-question" contenteditable="true">Q. 여러분은 지금 누구를 믿음이 부족하다고 판단하고 있습니까? 나는 어떤 능력과 결과로 사람의 믿음을 평가하고 있습니까? 이번 주 내가 받은 은사로 누구를 섬기고 누구의 고난을 함께 짊어지겠습니까?</div>
+              </div>
+            </div>
+            <div class="a4-page-badge">- 2 / 2 -</div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // ==========================================
+    // 1. 초기 설정 및 API 키 관리
+    // ==========================================
+    const STORAGE_KEY = 'sermon_summary_gemini_api_key';
+
+    window.addEventListener('DOMContentLoaded', () => {
+      updateApiKeyStatus();
+      adjustScaleForMobile();
+      window.addEventListener('resize', adjustScaleForMobile);
+    });
+
+    function showToast(msg, duration = 3200) {
+      const box = document.getElementById('toast-box');
+      box.textContent = msg;
+      box.classList.remove('hidden');
+      box.style.opacity = '1';
+      clearTimeout(window._toastTimer);
+      window._toastTimer = setTimeout(() => {
+        box.style.opacity = '0';
+        setTimeout(() => box.classList.add('hidden'), 300);
+      }, duration);
+    }
+
+    function toggleApiModal() {
+      const modal = document.getElementById('api-modal');
+      const input = document.getElementById('gemini-api-key-input');
+      if (modal.classList.contains('hidden')) {
+        input.value = localStorage.getItem(STORAGE_KEY) || '';
+        modal.classList.remove('hidden');
+      } else {
+        modal.classList.add('hidden');
+      }
+    }
+
+    function saveApiKey() {
+      const val = document.getElementById('gemini-api-key-input').value.trim();
+      if (!val) {
+        showToast('⚠️ API 키를 입력해주세요.');
+        return;
+      }
+      localStorage.setItem(STORAGE_KEY, val);
+      updateApiKeyStatus();
+      toggleApiModal();
+      showToast('✅ Gemini API 키가 안전하게 저장되었습니다.');
+    }
+
+    function clearApiKey() {
+      localStorage.removeItem(STORAGE_KEY);
+      document.getElementById('gemini-api-key-input').value = '';
+      updateApiKeyStatus();
+      showToast('🗑️ 저장된 API 키가 삭제되었습니다.');
+    }
+
+    function updateApiKeyStatus() {
+      const key = localStorage.getItem(STORAGE_KEY);
+      const dot = document.getElementById('api-status-dot');
+      if (key && key.length > 10) {
+        dot.classList.remove('bg-rose-500');
+        dot.classList.add('bg-emerald-500');
+      } else {
+        dot.classList.remove('bg-emerald-500');
+        dot.classList.add('bg-rose-500');
+      }
+    }
+
+    // ==========================================
+    // 2. 유튜브 정보 불러오기 & 타임스탬프 제거
+    // ==========================================
+    async function fetchYoutubeInfo() {
+      const url = document.getElementById('youtube-url').value.trim();
+      if (!url) {
+        showToast('⚠️ 설교 유튜브 주소를 먼저 입력해주세요.');
+        return;
+      }
+
+      const btn = document.getElementById('fetch-yt-btn');
+      btn.disabled = true;
+      btn.textContent = '불러오는 중...';
+
+      try {
+        // 1) 공식 oEmbed API로 영상 제목 추출
+        const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+        const res = await fetch(oembedUrl);
+        if (!res.ok) throw new Error('유튜브 영상 정보를 가져올 수 없습니다.');
+        const data = await res.json();
+
+        const metaBox = document.getElementById('yt-meta-text');
+        const currentMeta = metaBox.value.trim();
+        if (!currentMeta) {
+          metaBox.value = `${data.title}\n(유튜브 설명란에서 설교자/일자 및 성경본문 구절을 복사해 아래에 붙여넣어 주세요)`;
+        } else if (!currentMeta.includes(data.title)) {
+          metaBox.value = `${data.title}\n${currentMeta}`;
+        }
+
+        showToast(`✅ 영상 제목 로드 완료: "${data.title}". 설명란과 스크립트도 확인해주세요.`);
+      } catch (err) {
+        showToast('⚠️ 유튜브 자동 불러오기 제한: 영상 제목과 설명란, 스크립트를 직접 붙여넣어 주세요.');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '영상 정보 불러오기';
+      }
+    }
+
+    function stripTimestamps() {
+      const box = document.getElementById('sermon-transcript');
+      if (!box.value.trim()) return;
+      // 00:00 또는 1:23:45 형태 제거 및 줄바꿈 정리
+      let cleaned = box.value
+        .replace(/^\s*\d{1,2}:\d{2}(?::\d{2})?\s*$/gm, '')
+        .replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, '')
+        .replace(/\n{2,}/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      box.value = cleaned;
+      showToast('✂️ 시간 표시(00:00)를 모두 제거했습니다.');
+    }
+
+    // ==========================================
+    // 3. 샘플 데이터 채우기 (즉시 테스트용)
+    // ==========================================
+    function loadSampleData() {
+      document.getElementById('youtube-url').value = 'https://www.youtube.com/watch?v=sample_sermon_1122';
+      document.getElementById('yt-meta-text').value = `같은 한 성령
+11/22 주일설교_김진규 목사님
+고린도전서 12장 1~11절
+1 형제들아 신령한 것에 대하여 나는 너희가 알지 못하기를 원하지 아니하노니
+2 너희도 알거니와 너희가 이방인으로 있을 때에 말 못하는 우상에게로 끄는 그대로 끌려 갔느니라
+3 그러므로 내가 너희에게 알리노니 하나님의 영으로 말하는 자는 누구든지 예수를 저주할 자라 하지 아니하고 또 성령으로 아니하고는 누구든지 예수를 주시라 할 수 없느니라
+4 은사는 여러 가지나 성령은 같고
+5 직분은 여러 가지나 주는 같으며
+6 또 사역은 여러 가지나 모든 것을 모든 사람 가운데서 이루시는 하나님은 같으니
+7 각 사람에게 성령을 나타내심은 유익하게 하려 하심이라
+8 어떤 사람에게는 성령으로 말미암아 지혜의 말씀을, 어떤 사람에게는 같은 성령을 따라 지식의 말씀을,
+9 다른 사람에게는 같은 성령으로 믿음을, 어떤 사람에게는 한 성령으로 병 고치는 은사를,
+10 어떤 사람에게는 능력 행함을, 어떤 사람에게는 예언함을, 어떤 사람에게는 영들 분별함을, 다른 사람에게는 각종 방언 말함을, 어떤 사람에게는 방언들 통역함을 주시나니
+11 이 모든 일은 같은 한 성령이 행하사 그의 뜻대로 각 사람에게 나누어 주시는 것이니라`;
+
+      document.getElementById('sermon-transcript').value = `지난 목요일 수능이 있었습니다. 그동안 공부한 것을 하루 만에 평가받는다는 것은 참 부담스러운 일입니다. 우리도 신앙생활을 하면서 사람들에게 등급을 매기고 있지는 않습니까? 바울은 성령에 속한 일, 곧 성령의 은사를 반드시 알아야 한다고 말합니다. 고린도 교인들은 방언과 예언 등 여러 은사를 경험했지만 서로 자기가 더 신령하다며 다투었습니다... (샘플 설교 대본 전체)`;
+
+      document.getElementById('point1-input').value = `1. 신령한 것을 알아야 합니다.\nQ. 여러분은 하나님이 은혜로 주신 것을 가지고 나를 높이고 있지는 않습니까? 사역과 직분을 감당하면서 주님보다 내 인정과 체면을 더 붙들고 있지는 않습니까?`;
+      document.getElementById('point2-input').value = `2. 섬기는 자가 되어야 합니다.\nQ. 여러분은 맡겨진 자리에서 섬기고 있습니까, 아니면 사람들에게 대접받기를 원합니까? 최근 내 옳음을 주장하다 상처를 준 사람은 누구입니까? 그 사람에게 내가 먼저 사과하고 감당해야 할 섬김은 무엇입니까?`;
+      document.getElementById('point3-input').value = `3. 서로의 유익을 구해야 합니다.\nQ. 여러분은 지금 누구를 믿음이 부족하다고 판단하고 있습니까? 나는 어떤 능력과 결과로 사람의 믿음을 평가하고 있습니까? 이번 주 내가 받은 은사로 누구를 섬기고 누구의 고난을 함께 짊어지겠습니까?`;
+
+      showToast('📋 샘플 데이터가 입력되었습니다. 우측 미리보기에서 바로 확인 및 다운로드가 가능합니다.');
+    }
+
+    // ==========================================
+    // 4. Gemini API 호출 및 A4 2장 요약 생성
+    // ==========================================
+    async function generateSermonSummary() {
+      const apiKey = localStorage.getItem(STORAGE_KEY) || "";
+      if (!apiKey) {
+        toggleApiModal();
+        showToast('🔑 먼저 Gemini API Key를 입력해주세요.');
+        return;
+      }
+
+      const ytUrl = document.getElementById('youtube-url').value.trim();
+      const ytMeta = document.getElementById('yt-meta-text').value.trim();
+      const transcript = document.getElementById('sermon-transcript').value.trim();
+      const p1 = document.getElementById('point1-input').value.trim();
+      const p2 = document.getElementById('point2-input').value.trim();
+      const p3 = document.getElementById('point3-input').value.trim();
+
+      if (!ytMeta && !transcript) {
+        showToast('⚠️ 유튜브 설명란(제목/성경본문) 또는 설교 대본을 입력해주세요.');
+        return;
+      }
+      if (!p1 || !p2 || !p3) {
+        showToast('⚠️ 1대지, 2대지, 3대지와 적용질문을 모두 입력해주세요.');
+        return;
+      }
+
+      setLoadingState(true);
+
+      const systemPrompt = `당신은 교회 주일설교를 성도들이 묵상하고 목장(소그룹) 나눔에 활용할 수 있도록 A4 용지 정확히 2장 분량의 요약본으로 편집하는 전문 설교 에디터입니다.`;
+
+      const userPrompt = `
+[입력 데이터]
+- 유튜브 URL: ${ytUrl}
+- 유튜브 제목/설명란 정보:
+${ytMeta}
+
+- 설교 대본(자막):
+${transcript.slice(0, 32000)}
+
+- 1대지 및 적용질문:
+${p1}
+
+- 2대지 및 적용질문:
+${p2}
+
+- 3대지 및 적용질문:
+${p3}
+
+[필수 편집 규칙]
+1. 상단 메타데이터 (A4 0.5장 이내):
+   - sermon_title: 설교 제목
+   - date_preacher: 날짜 및 설교자 (예: 11/22 주일설교_김진규 목사님)
+   - scripture_ref: 성경 장절 (예: 고린도전서 12장 1~11절)
+   - scripture_verses: 성경 본문 전체 (절 번호 포함, 배열 형태로 각 절을 한 항목씩 담기. 개역개정 기준)
+2. 도입 내용 (intro):
+   - 설교 시작 부분의 예화, 문제 제기, 핵심 질문을 목사님의 원문 어조를 살려 3~4줄(공백 포함 약 250~300자)로 작성하세요. 시간 표시(00:00)는 절대 포함하지 마세요.
+3. 본문 1.5장 분량 요약 (points 배열 3개):
+   - 1대지, 2대지, 3대지 각각의 본문(paragraphs)을 공백 포함 약 850~950자 내외로 작성하세요. (전체 문서가 A4 용지 정확히 2페이지에 알맞게 들어가도록 분량을 맞추세요.)
+   - 단순 개조식이나 딱딱한 요약문이 아니라, **목사님의 실제 설교 대본의 문체와 표현, 성경 본문 주해, 목사님 본인의 간증과 구체적인 예화를 최대한 그대로 살려** 2~3개의 자연스러운 서술형 문단으로 작성하세요.
+   - heading에는 사용자가 입력한 대지 제목(예: "1. 신령한 것을 알아야 합니다.")을 넣고, question에는 사용자가 입력한 적용질문(예: "Q. ...")을 그대로 넣으세요.
+
+반드시 아래 JSON 스키마로만 응답하세요:
+{
+  "sermon_title": "설교 제목",
+  "date_preacher": "날짜_설교자",
+  "scripture_ref": "성경 장절",
+  "scripture_verses": ["1 말씀...", "2 말씀..."],
+  "intro": "도입 내용 3~4줄",
+  "points": [
+    {
+      "heading": "1. 1대지 제목",
+      "paragraphs": ["첫 번째 문단...", "두 번째 문단..."],
+      "question": "Q. 1대지 적용질문"
+    },
+    {
+      "heading": "2. 2대지 제목",
+      "paragraphs": ["첫 번째 문단...", "두 번째 문단..."],
+      "question": "Q. 2대지 적용질문"
+    },
+    {
+      "heading": "3. 3대지 제목",
+      "paragraphs": ["첫 번째 문단...", "두 번째 문단..."],
+      "question": "Q. 3대지 적용질문"
+    }
+  ]
+}`;
+
+      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [{ parts: [{ text: userPrompt }] }],
+        systemInstruction: { parts: [{ text: systemPrompt }] },
+        generationConfig: {
+          responseMimeType: "application/json",
+          temperature: 0.3
+        }
+      };
+
+      try {
+        const resultData = await fetchWithExponentialBackoff(apiUrl, payload);
+        const rawText = resultData?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!rawText) throw new Error('AI 응답이 비어 있습니다.');
+
+        const parsed = JSON.parse(rawText);
+        renderSummaryToPreview(parsed);
+        setTimeout(() => autoFitTwoPages(), 150);
+        showToast('✨ A4 2장 설교 요약본 생성이 완료되었습니다!');
+      } catch (err) {
+        showToast(`❌ 생성 오류: ${err.message || 'API 호출에 실패했습니다.'}`, 5000);
+      } finally {
+        setLoadingState(false);
+      }
+    }
+
+    async function fetchWithExponentialBackoff(url, payload, maxRetries = 4) {
+      let delay = 1000;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          return await response.json();
+        }
+
+        if (response.status === 429 || response.status >= 500) {
+          if (attempt === maxRetries) {
+            throw new Error(`서버 혼잡으로 요청에 실패했습니다. (HTTP ${response.status})`);
+          }
+          await new Promise(res => setTimeout(res, delay));
+          delay *= 2;
+        } else {
+          const errJson = await response.json().catch(() => ({}));
+          throw new Error(errJson?.error?.message || `HTTP 오류 (${response.status})`);
+        }
+      }
+    }
+
+    function setLoadingState(isLoading) {
+      const btn = document.getElementById('generate-btn');
+      const icon = document.getElementById('generate-btn-icon');
+      const text = document.getElementById('generate-btn-text');
+      btn.disabled = isLoading;
+      if (isLoading) {
+        btn.classList.add('opacity-75', 'cursor-not-allowed');
+        icon.innerHTML = `<svg class="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
+        text.textContent = '목사님 어조를 살려 A4 2장 요약 중...';
+      } else {
+        btn.classList.remove('opacity-75', 'cursor-not-allowed');
+        icon.textContent = '✨';
+        text.textContent = 'A4 2장 설교 요약본 생성하기';
+      }
+    }
+
+    function renderSummaryToPreview(data) {
+      document.getElementById('doc-title').innerText = data.sermon_title || '';
+      document.getElementById('doc-meta').innerText = data.date_preacher || '';
+      document.getElementById('doc-scripture-ref').innerText = data.scripture_ref || '';
+
+      const versesHtml = (data.scripture_verses || [])
+        .map(v => escapeHtml(v))
+        .join('<br>');
+      document.getElementById('doc-scripture-verses').innerHTML = versesHtml;
+      document.getElementById('doc-intro').innerText = data.intro || '';
+
+      const pts = data.points || [];
+      if (pts[0]) {
+        document.getElementById('doc-p1-heading').innerText = pts[0].heading || '';
+        document.getElementById('doc-p1-body').innerHTML = (pts[0].paragraphs || []).map(p => `<p>${escapeHtml(p)}</p>`).join('');
+        document.getElementById('doc-p1-question').innerText = pts[0].question || '';
+      }
+      if (pts[1]) {
+        document.getElementById('doc-p2-heading').innerText = pts[1].heading || '';
+        document.getElementById('doc-p2-body').innerHTML = (pts[1].paragraphs || []).map(p => `<p>${escapeHtml(p)}</p>`).join('');
+        document.getElementById('doc-p2-question').innerText = pts[1].question || '';
+      }
+      if (pts[2]) {
+        document.getElementById('doc-p3-heading').innerText = pts[2].heading || '';
+        document.getElementById('doc-p3-body').innerHTML = (pts[2].paragraphs || []).map(p => `<p>${escapeHtml(p)}</p>`).join('');
+        document.getElementById('doc-p3-question').innerText = pts[2].question || '';
+      }
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // ==========================================
+    // 5. 타이포그래피 & A4 2장 자동맞춤(Auto-Fit)
+    // ==========================================
+    function updateTypography() {
+      const fSize = parseFloat(document.getElementById('font-size-slider').value);
+      const lHeight = parseFloat(document.getElementById('line-height-slider').value);
+
+      document.getElementById('font-size-val').textContent = `${fSize.toFixed(1)}pt`;
+      document.getElementById('line-height-val').textContent = lHeight.toFixed(2);
+
+      document.documentElement.style.setProperty('--doc-font-size', `${fSize}pt`);
+      document.documentElement.style.setProperty('--scripture-font-size', `${Math.max(8.0, fSize - 0.5).toFixed(1)}pt`);
+      document.documentElement.style.setProperty('--doc-line-height', lHeight);
+    }
+
+    function autoFitTwoPages() {
+      const p1Sheet = document.getElementById('a4-page-1');
+      const p1Content = document.getElementById('page-1-content');
+      const p2Sheet = document.getElementById('a4-page-2');
+      const p2Content = document.getElementById('page-2-content');
+
+      // 사용 가능한 내부 높이 (297mm - 상하 패딩 28mm ≈ 1016px)
+      const maxInnerHeight = p1Sheet.clientHeight - 105;
+
+      let fSize = 9.8;
+      let lHeight = 1.58;
+
+      while (fSize >= 8.2) {
+        document.documentElement.style.setProperty('--doc-font-size', `${fSize}pt`);
+        document.documentElement.style.setProperty('--scripture-font-size', `${(fSize - 0.5).toFixed(1)}pt`);
+        document.documentElement.style.setProperty('--doc-line-height', lHeight);
+
+        if (p1Content.scrollHeight <= maxInnerHeight && p2Content.scrollHeight <= maxInnerHeight) {
+          break;
+        }
+        fSize = +(fSize - 0.1).toFixed(1);
+        lHeight = +(Math.max(1.34, lHeight - 0.02)).toFixed(2);
+      }
+
+      document.getElementById('font-size-slider').value = fSize;
+      document.getElementById('line-height-slider').value = lHeight;
+      updateTypography();
+      showToast(`📐 A4 2페이지 여백에 맞춰 자동 조정되었습니다. (${fSize}pt / 줄간격 ${lHeight})`);
+    }
+
+    function adjustScaleForMobile() {
+      const container = document.getElementById('preview-scroll-container');
+      const wrapper = document.getElementById('a4-document-wrapper');
+      if (!container || !wrapper) return;
+      const availableWidth = container.clientWidth - 32;
+      const a4WidthPx = 794; // 210mm at 96dpi
+      if (availableWidth < a4WidthPx) {
+        const scale = availableWidth / a4WidthPx;
+        wrapper.style.transform = `scale(${scale})`;
+        wrapper.style.height = `${(1123 * 2 + 48) * scale}px`;
+      } else {
+        wrapper.style.transform = 'none';
+        wrapper.style.height = 'auto';
+      }
+    }
+
+    // 현재 편집된 DOM에서 구조화된 데이터 추출
+    function extractCurrentDocumentData() {
+      const getParagraphs = (id) => {
+        const el = document.getElementById(id);
+        const ps = Array.from(el.querySelectorAll('p')).map(p => p.innerText.trim()).filter(Boolean);
+        if (ps.length > 0) return ps;
+        return el.innerText.split('\n').map(s => s.trim()).filter(Boolean);
+      };
+
+      const versesLines = document.getElementById('doc-scripture-verses').innerText
+        .split('\n')
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      return {
+        title: document.getElementById('doc-title').innerText.trim(),
+        meta: document.getElementById('doc-meta').innerText.trim(),
+        scriptureRef: document.getElementById('doc-scripture-ref').innerText.trim(),
+        scriptureVerses: versesLines,
+        intro: document.getElementById('doc-intro').innerText.trim(),
+        points: [
+          {
+            heading: document.getElementById('doc-p1-heading').innerText.trim(),
+            paragraphs: getParagraphs('doc-p1-body'),
+            question: document.getElementById('doc-p1-question').innerText.trim()
+          },
+          {
+            heading: document.getElementById('doc-p2-heading').innerText.trim(),
+            paragraphs: getParagraphs('doc-p2-body'),
+            question: document.getElementById('doc-p2-question').innerText.trim()
+          },
+          {
+            heading: document.getElementById('doc-p3-heading').innerText.trim(),
+            paragraphs: getParagraphs('doc-p3-body'),
+            question: document.getElementById('doc-p3-question').innerText.trim()
+          }
+        ]
+      };
+    }
+
+    // ==========================================
+    // 6. 다운로드 기능 1: PDF (A4 2장 고정)
+    // ==========================================
+    function downloadPDF() {
+      const data = extractCurrentDocumentData();
+      const fileName = `${data.title || '주일설교'}_요약.pdf`;
+      const element = document.getElementById('a4-document-wrapper');
+
+      // 일시적으로 스케일 복원 및 페이지 배지 숨김
+      const prevTransform = element.style.transform;
+      element.style.transform = 'none';
+      const badges = document.querySelectorAll('.a4-page-badge');
+      badges.forEach(b => b.style.display = 'none');
+
+      showToast('📄 A4 2장 PDF 파일을 생성하고 있습니다...');
+
+      const opt = {
+        margin: 0,
+        filename: fileName,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, letterRendering: true },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+        pagebreak: { mode: ['css', 'legacy'] }
+      };
+
+      html2pdf().set(opt).from(element).save().then(() => {
+        element.style.transform = prevTransform;
+        badges.forEach(b => b.style.display = '');
+        showToast('✅ PDF 다운로드가 완료되었습니다.');
+      }).catch(() => {
+        element.style.transform = prevTransform;
+        badges.forEach(b => b.style.display = '');
+        // fallback: 브라우저 인쇄 대화상자
+        window.print();
+      });
+    }
+
+    // ==========================================
+    // 7. 다운로드 기능 2: 한글(.hwp) 호환 문서
+    // ==========================================
+    function downloadHWP() {
+      const data = extractCurrentDocumentData();
+      const fSize = document.getElementById('font-size-slider').value;
+      const versesHtml = data.scriptureVerses.map(v => escapeHtml(v)).join('<br>');
+
+      const pointsHtml = data.points.map(pt => {
+        const paras = pt.paragraphs.map(p =>
+          `<p style="margin:0 0 5pt 0; line-height:152%; text-align:justify; font-size:${fSize}pt;">${escapeHtml(p)}</p>`
+        ).join('');
+        return `
+          <p style="margin:8pt 0 3pt 0; font-size:${parseFloat(fSize) + 0.6}pt; font-weight:bold; text-decoration:underline; color:#000000;">
+            ${escapeHtml(pt.heading)}
+          </p>
+          ${paras}
+          <p style="margin:4pt 0 8pt 0; color:#7B1FA2; line-height:148%; font-size:${fSize}pt;">
+            ${escapeHtml(pt.question)}
+          </p>
+        `;
+      }).join('');
+
+      // 아래아한글에서 서식(색상, 밑줄, A4 여백)이 그대로 열리도록 구성된 HWP 호환 HTML 스트림
+      const hwpContent = `
+        <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <title>${escapeHtml(data.title)}</title>
+          <style>
+            @page {
+              size: A4;
+              margin: 14mm 16mm 14mm 16mm;
+            }
+            body {
+              font-family: '맑은 고딕', '함초롬바탕', 'Malgun Gothic', sans-serif;
+              font-size: ${fSize}pt;
+              color: #000000;
+              line-height: 1.5;
+            }
+          </style>
+        </head>
+        <body>
+          <p style="font-size:13pt; font-weight:bold; margin:0 0 2pt 0;">${escapeHtml(data.title)}</p>
+          <p style="font-size:10pt; font-weight:bold; margin:0 0 6pt 0;">${escapeHtml(data.meta)}</p>
+
+          <p style="color:#1B4F9C; font-weight:bold; margin:0 0 2pt 0; font-size:${parseFloat(fSize) - 0.3}pt;">${escapeHtml(data.scriptureRef)}</p>
+          <p style="color:#1B4F9C; font-size:${parseFloat(fSize) - 0.5}pt; line-height:142%; margin:0 0 9pt 0;">${versesHtml}</p>
+
+          <p style="line-height:152%; text-align:justify; margin:0 0 9pt 0; font-size:${fSize}pt;">${escapeHtml(data.intro)}</p>
+
+          ${pointsHtml}
+        </body>
+        </html>
+      `;
+
+      const blob = new Blob(['\ufeff' + hwpContent], { type: 'application/x-hwp;charset=utf-8' });
+      triggerFileDownload(blob, `${data.title || '주일설교'}_요약.hwp`);
+      showToast('🇰🇷 한글(.hwp) 파일 다운로드가 완료되었습니다.');
+    }
+
+    // ==========================================
+    // 8. 다운로드 기능 3: 워드(.docx) 실제 파일 생성
+    // ==========================================
+    async function downloadDOCX() {
+      const data = extractCurrentDocumentData();
+
+      if (!window.docx) {
+        showToast('⚠️ 워드 생성 라이브러리를 불러오는 중입니다. 잠시 후 다시 시도해주세요.');
+        return;
+      }
+
+      const { Document, Packer, Paragraph, TextRun, AlignmentType, UnderlineType, convertMillimetersToTwip } = window.docx;
+
+      const children = [];
+
+      // 설교 제목
+      children.push(new Paragraph({
+        spacing: { after: 40 },
+        children: [new TextRun({ text: data.title, bold: true, size: 26, font: "맑은 고딕", color: "000000" })]
+      }));
+
+      // 일자 및 설교자
+      children.push(new Paragraph({
+        spacing: { after: 120 },
+        children: [new TextRun({ text: data.meta, bold: true, size: 20, font: "맑은 고딕", color: "000000" })]
+      }));
+
+      // 성경 장절 (푸른색 #1B4F9C)
+      children.push(new Paragraph({
+        spacing: { after: 40 },
+        children: [new TextRun({ text: data.scriptureRef, bold: true, size: 19, font: "맑은 고딕", color: "1B4F9C" })]
+      }));
+
+      // 성경 본문 전체 (푸른색 #1B4F9C)
+      data.scriptureVerses.forEach((v, idx) => {
+        children.push(new Paragraph({
+          spacing: { after: idx === data.scriptureVerses.length - 1 ? 160 : 20, line: 310 },
+          children: [new TextRun({ text: v, size: 18, font: "맑은 고딕", color: "1B4F9C" })]
+        }));
+      });
+
+      // 도입 내용
+      children.push(new Paragraph({
+        alignment: AlignmentType.JUSTIFIED,
+        spacing: { after: 160, line: 330 },
+        children: [new TextRun({ text: data.intro, size: 19, font: "맑은 고딕", color: "111111" })]
+      }));
+
+      // 1~3대지 및 적용질문
+      data.points.forEach((pt) => {
+        // 대지 제목 (진하게 + 밑줄)
+        children.push(new Paragraph({
+          spacing: { before: 140, after: 70 },
+          children: [
+            new TextRun({
+              text: pt.heading,
+              bold: true,
+              underline: { type: UnderlineType.SINGLE },
+              size: 20,
+              font: "맑은 고딕",
+              color: "000000"
+            })
+          ]
+        }));
+
+        // 대지 본문 문단들
+        pt.paragraphs.forEach((pText) => {
+          children.push(new Paragraph({
+            alignment: AlignmentType.JUSTIFIED,
+            spacing: { after: 90, line: 330 },
+            children: [new TextRun({ text: pText, size: 19, font: "맑은 고딕", color: "111111" })]
+          }));
+        });
+
+        // 적용질문 (자주색 #7B1FA2)
+        children.push(new Paragraph({
+          alignment: AlignmentType.JUSTIFIED,
+          spacing: { before: 40, after: 150, line: 320 },
+          children: [new TextRun({ text: pt.question, size: 19, font: "맑은 고딕", color: "7B1FA2" })]
+        }));
+      });
+
+      const doc = new Document({
+        sections: [{
+          properties: {
+            page: {
+              size: {
+                width: convertMillimetersToTwip(210),
+                height: convertMillimetersToTwip(297)
+              },
+              margin: {
+                top: convertMillimetersToTwip(14),
+                bottom: convertMillimetersToTwip(14),
+                left: convertMillimetersToTwip(16),
+                right: convertMillimetersToTwip(16)
+              }
+            }
+          },
+          children
+        }]
+      });
+
+      const blob = await Packer.toBlob(doc);
+      triggerFileDownload(blob, `${data.title || '주일설교'}_요약.docx`);
+      showToast('📝 워드(.docx) 파일 다운로드가 완료되었습니다.');
+    }
+
+    function triggerFileDownload(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+streamlit
+yt-dlp
+youtube-transcript-api
+google-genai
+weasyprint
+python-docx
+pypdf
